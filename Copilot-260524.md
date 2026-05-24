@@ -909,3 +909,274 @@ Given that constraint, I recommend:
 6. make the sequencer internally derive its `ProcessingPlan` from that state.
 
 That gets you GitHub-renderable markup text while preserving the substance of the note.
+
+Yes — **run-level markers are the right design** if a single date can contain mixed input types.
+
+A date-level marker like `gain_selected.ready` for the whole night becomes ambiguous as soon as some runs are:
+- legacy raw,
+- some already gain-reduced,
+- some already Cat-A calibrated.
+
+So the state model should move from:
+
+- **night-level readiness**
+
+to:
+
+- **run-level capability/state**
+
+## Recommendation
+Use:
+
+- **night-level markers** only for global artifacts
+  - run summary ready
+  - night finished
+  - web updated
+
+and use:
+
+- **run-level markers** for processing state
+  - gain selected
+  - Cat-A calibrated
+  - DL1 ready
+  - Cat-B ready
+  - DL1AB ready
+  - DL2 ready
+
+That gives you mixed-mode flexibility.
+
+---
+
+## Good filesystem layout
+Something like:
+
+```text
+$STATE_ROOT/
+  20260523/
+    night/
+      run_summary.ready
+      night_finished.ready
+    runs/
+      01807/
+        input/
+          legacy_raw.ready
+        products/
+          gain_selected.ready
+          catA_calibrated.ready
+          dl1a.ready
+      01808/
+        input/
+          gain_selected.ready
+        products/
+          catA_calibrated.ready
+          dl1a.ready
+      01809/
+        input/
+          catA_calibrated.ready
+        products/
+          dl1a.ready
+          dl1ab.ready
+```
+
+You can simplify the names, but the important part is:
+- state is per run,
+- monotonic progression is visible,
+- shell can test it cheaply.
+
+---
+
+## Even better: capabilities, not exclusive modes
+At run level, I would slightly shift from “one mode per run” to “capabilities per run”.
+
+Because a run may have:
+- gain reduction done
+- Cat-A done
+- but not later products
+
+So markers like these are better than a single mutually exclusive mode file:
+
+```text
+runs/01807/capabilities/gain_selected.ready
+runs/01807/capabilities/catA_calibrated.ready
+```
+
+That is more flexible than forcing one enum in shell.
+
+### Why
+If you use only one state file like:
+- `legacy_raw`
+- `gain_selected`
+- `catA_calibrated`
+
+you have to decide whether state means:
+- current input origin, or
+- furthest completed step.
+
+That gets messy.
+
+Marker capabilities avoid that confusion.
+
+---
+
+## Suggested semantics
+
+### Input markers
+Describe what the run already has when lstosa sees it:
+
+- `has_raw.ready`
+- `has_gain_selected.ready`
+- `has_catA_calibrated.ready`
+
+### Output markers
+Describe what lstosa has produced:
+
+- `dl1a.ready`
+- `catB.ready`
+- `dl1ab.ready`
+- `dl2.ready`
+
+### Optional provenance marker
+You may also want:
+- `source_external.ready`
+- `source_lstosa.ready`
+
+to distinguish upstream-provided vs locally-produced state.
+
+But that is optional.
+
+---
+
+## How launchers would use this
+Shell launchers shouldn’t require one single night-wide condition anymore.
+
+Instead they should:
+1. iterate over runs for the night,
+2. test each run’s markers,
+3. submit only eligible runs.
+
+For example, Sequencer 1 launcher logic becomes conceptually:
+
+- for each run in the run summary:
+  - if run has `has_catA_calibrated.ready`, skip calibration-dependent setup and submit downstream-compatible processing
+  - else if run has `has_gain_selected.ready`, submit Cat-A calibration + downstream
+  - else if run has `has_raw.ready`, either wait for gain selection or skip, depending on configured policy
+
+That does mean launchers get a bit more logic, but not necessarily much if the per-run decision mostly stays in Python.
+
+---
+
+## Important design choice
+Since you want to keep shell lightweight, I would **not** make shell fully decide per-run processing logic.
+
+Instead:
+
+### Shell should do only coarse gating
+Example:
+- “is run summary ready?”
+- “is there at least one runnable run?”
+- “has the night already finished?”
+
+### Python sequencer should do fine-grained run-level decisions
+Because once runs can differ in state, encoding all that branching in shell gets ugly fast.
+
+So the best split is:
+
+- **shell**
+  - triggers the sequencer periodically
+  - passes the date/config
+  - maybe checks night-level prerequisites
+
+- **sequencer**
+  - inspects all runs for the date
+  - determines each run’s input state
+  - builds the right jobs for each run
+
+That is probably the cleanest architecture for mixed-mode nights.
+
+---
+
+## So should markers be run-level?
+**Yes. Absolutely, if mixed data states can coexist within a night.**
+
+## Should launchers consume run-level markers directly?
+**Only a little.** Mostly no.
+
+If you push too much per-run logic into `.sh`, it becomes fragile.
+
+## Best hybrid design
+### Shell launchers check only night-level prerequisites:
+- run summary exists
+- not night finished
+- maybe state directory exists
+
+### Sequencer handles run-level markers internally:
+- each run can be legacy raw, gain-selected, or Cat-A-calibrated
+- sequencer builds per-run execution plan
+
+That gives:
+- minimal shell complexity,
+- full flexibility,
+- mixed-run support.
+
+---
+
+## Practical structure I’d recommend
+
+### Night level
+```text
+state/YYYYMMDD/night/run_summary.ready
+state/YYYYMMDD/night/night_finished.ready
+```
+
+### Run level
+```text
+state/YYYYMMDD/runs/RUNID/capabilities/has_gain_selected.ready
+state/YYYYMMDD/runs/RUNID/capabilities/has_catA_calibrated.ready
+state/YYYYMMDD/runs/RUNID/products/dl1a.ready
+state/YYYYMMDD/runs/RUNID/products/catB.ready
+state/YYYYMMDD/runs/RUNID/products/dl1ab.ready
+state/YYYYMMDD/runs/RUNID/products/dl2.ready
+```
+
+Optional:
+```text
+state/YYYYMMDD/runs/RUNID/metadata/input_origin.txt
+```
+
+---
+
+## One more useful idea
+You may want one small machine-readable file per run, for example:
+
+```json
+{
+  "run": 1807,
+  "date": "2026-05-23",
+  "has_gain_selected": true,
+  "has_catA_calibrated": false,
+  "dl1a_ready": false,
+  "source": "external"
+}
+```
+
+But if your main goal is cheap shell checks, marker files are simpler and probably better.
+
+---
+
+## Final recommendation
+For mixed run types in one date:
+
+- **yes, use run-level markers**
+- keep **night-level markers** only for global coordination
+- keep **launchers in shell**
+- let **sequencer make per-run decisions**
+- model run state as **capabilities/markers**, not just one date-wide mode
+
+If you want, I can next propose:
+1. a **minimal run-level marker scheme**, and  
+2. how the sequencer’s per-run decision tree should work for:
+   - raw runs,
+   - gain-selected runs,
+   - Cat-A-calibrated runs.
+
+
