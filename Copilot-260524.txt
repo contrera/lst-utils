@@ -3,7 +3,7 @@ The data lstosa processes will suffer a modification soon. Gain reduction will b
 
 
 
-A good way to handle this is to **separate ìwhat state the input data is already inî from ìwhich steps lstosa should runî** and make that explicit in configuration, rather than continuing to add one-off flags.
+A good way to handle this is to **separate ‚Äúwhat state the input data is already in‚Äù from ‚Äúwhich steps lstosa should run‚Äù** and make that explicit in configuration, rather than continuing to add one-off flags.
 
 ### Recommendation
 Introduce a **processing-state / processing-mode model** for the input, for example:
@@ -16,7 +16,7 @@ Introduce a **processing-state / processing-mode model** for the input, for exam
 Then make the sequencer derive its job graph from that state.
 
 ### Why this is better than more `--no-*` flags
-Right now, options like ìno calibrationî and ìno gain selectionî are useful, but they are **negative skip-flags**, which become hard to reason about as upstream formats change. If the new data already has gain reduction and Cat-A calibration done, the pipeline should not be described as ìnormal pipeline + two skip flagsî; it should be described as **a different starting state**.
+Right now, options like ‚Äúno calibration‚Äù and ‚Äúno gain selection‚Äù are useful, but they are **negative skip-flags**, which become hard to reason about as upstream formats change. If the new data already has gain reduction and Cat-A calibration done, the pipeline should not be described as ‚Äúnormal pipeline + two skip flags‚Äù; it should be described as **a different starting state**.
 
 That gives you:
 
@@ -49,7 +49,7 @@ gain_reduced = false
 catA_calibrated = false
 ```
 
-Iíd prefer **mode + optional overrides**:
+I‚Äôd prefer **mode + optional overrides**:
 
 ```ini
 [INPUT_STATE]
@@ -170,7 +170,7 @@ Then add:
 This lets operators adopt the new mode gradually.
 
 ### Testing strategy
-Youíll want tests for at least these cases:
+You‚Äôll want tests for at least these cases:
 
 1. `legacy_raw`
    - calibration jobs included
@@ -211,14 +211,14 @@ If you want the most flexible long-term solution, I recommend:
 
 In short:
 
-> Donít model this as ìskip more steps.î
-> Model it as ìlstosa can start from different upstream processing states.î
+> Don‚Äôt model this as ‚Äúskip more steps.‚Äù
+> Model it as ‚Äúlstosa can start from different upstream processing states.‚Äù
 
 If you want, I can next draft a **concrete refactoring plan** with proposed config keys, CLI syntax, and the Python interfaces to add.
 
 But right now, gain-selection is a separate step not linked to sequencer to apply the suggested approach should they be connected?
 
-Yes ó **conceptually they should be connected, but not necessarily merged into one script**.
+Yes ‚Äî **conceptually they should be connected, but not necessarily merged into one script**.
 
 Right now the repo treats gain selection as an **external upstream stage** and the sequencer as a **downstream consumer**:
 
@@ -302,10 +302,10 @@ class InputState(Enum):
 ```
 
 Then sequencer no longer asks:
-- ìdid gain selection finish?î as a special case
+- ‚Äúdid gain selection finish?‚Äù as a special case
 
 It asks:
-- ìis the required input state for this stage available?î
+- ‚Äúis the required input state for this stage available?‚Äù
 
 ### 2. Shared readiness check
 Replace hard-coded special cases like `--no-gainsel` / `GainSelFinished.txt` gating with a general readiness API:
@@ -337,10 +337,10 @@ If future data arrives already:
 
 then sequencer should be able to start from a later state **without caring whether gain selection was run by lstosa, by another service, or offline upstream**.
 
-That means sequencer should stop using ìgain selection finishedî as a pipeline truth, and instead use ìrequired input products/state are availableî.
+That means sequencer should stop using ‚Äúgain selection finished‚Äù as a pipeline truth, and instead use ‚Äúrequired input products/state are available‚Äù.
 
 ## Practical migration path
-Iíd suggest:
+I‚Äôd suggest:
 
 ### Phase 1
 Keep current scripts, but introduce config like:
@@ -357,7 +357,7 @@ require_internal_gainsel = auto
 ### Phase 2
 Refactor sequencer launcher conditions:
 - today: wait for `GainSelFinished.txt`
-- future: call a shared ìstate ready?î check
+- future: call a shared ‚Äústate ready?‚Äù check
 
 ### Phase 3
 Deprecate `--no-gainsel` as a special-purpose flag and replace it with:
@@ -375,7 +375,7 @@ parser.add_argument(
 )
 ```
 
-That suggests the sequencer is not really modeling input state; it is just skipping a check. Thatís exactly what you want to evolve away from.
+That suggests the sequencer is not really modeling input state; it is just skipping a check. That‚Äôs exactly what you want to evolve away from.
 
 ## My recommendation
 Implement this rule:
@@ -391,7 +391,7 @@ If you want, I can next outline a **concrete refactor in lstosa terms**: which m
 
 Yes, please, outline it
 
-Hereís a concrete refactor outline for `cta-observatory/lstosa` that keeps gain selection separate but makes the pipeline flexible enough for future input states.
+Here‚Äôs a concrete refactor outline for `cta-observatory/lstosa` that keeps gain selection separate but makes the pipeline flexible enough for future input states.
 
 ## Goal
 Make the pipeline start from different **declared input states** instead of hard-coding assumptions like:
@@ -511,7 +511,7 @@ state = auto
 run_catA_calibration = true
 ```
 
-But for now Iíd keep it simple and explicit.
+But for now I‚Äôd keep it simple and explicit.
 
 ---
 
@@ -551,7 +551,7 @@ Old flags still work and override plan pieces.
 
 ---
 
-## 5. Replace ìGainSel finished?î checks with state readiness checks
+## 5. Replace ‚ÄúGainSel finished?‚Äù checks with state readiness checks
 
 Right now the repo is launcher/cron driven, and gain selection is gated by `GainSelFinished.txt`. The launcher docs explicitly mention this dependency.
 
@@ -591,10 +591,10 @@ not every launcher and sequencer branch.
 Do **not** remove `gain_selection` as a separate tool yet.
 
 Instead, change launcher logic from:
-- ìrun sequencer if `GainSelFinished.txt` existsî
+- ‚Äúrun sequencer if `GainSelFinished.txt` exists‚Äù
 
 to:
-- ìrun sequencer if `osa input-ready --state <configured_state>` returns successî
+- ‚Äúrun sequencer if `osa input-ready --state <configured_state>` returns success‚Äù
 
 For example, add a small CLI:
 
@@ -619,7 +619,7 @@ This keeps cron-based operations working while moving semantics into Python, whe
 
 ## 7. Make sequencer build only the needed job graph
 
-The important refactor is not just submission-time checks. Itís also sequence construction.
+The important refactor is not just submission-time checks. It‚Äôs also sequence construction.
 
 Wherever the sequencer currently:
 - assumes calibration sequence exists,
@@ -678,7 +678,7 @@ Keep them, but interpret them as plan modifiers.
 For example:
 
 - `--no-gainsel`
-  - donít require gain-selection readiness
+  - don‚Äôt require gain-selection readiness
   - warning: this only makes sense if input state is already compatible
 
 - `--no-calib`
@@ -693,7 +693,7 @@ This lets old operational workflows keep running during migration.
 
 ## 9. Add input validation
 
-You donít want mismatches between declared state and actual files.
+You don‚Äôt want mismatches between declared state and actual files.
 
 Add:
 
@@ -721,7 +721,7 @@ mode = warn
 
 ---
 
-## 10. Introduce a ìcapabilitiesî view for future extensibility
+## 10. Introduce a ‚Äúcapabilities‚Äù view for future extensibility
 
 If you expect more upstream changes, a simple enum may later become too coarse.
 
@@ -836,3 +836,250 @@ If you want the simplest robust implementation:
 That gives flexibility without a disruptive rewrite.
 
 If you want, I can next turn this into a **concrete patch plan**: file-by-file edits, example config syntax, and pseudocode for `build_processing_plan()` and `is_required_input_ready()`.
+
+I have kept the launchers as .sh file to avoid starting the python ecosystem like conda and python so often, this solution woudl force us to do it
+
+No ‚Äî **you do not need to start Python/conda more often**.
+
+You can keep the `.sh` launchers and still adopt the design. The key is:
+
+> move the **pipeline semantics** into a shared model, but keep the **cheap launcher gating** in shell.
+
+## Best fit for your constraint
+Since you intentionally use shell launchers to avoid Python startup overhead, I would **not** make launchers call a Python `input_ready` command on every cron tick.
+
+Instead:
+
+- keep launchers as `.sh`
+- keep cheap file/path checks in shell
+- move only the **sequencer‚Äôs internal execution logic** to `input_state` / `ProcessingPlan`
+- optionally generate a tiny shell-readable readiness artifact once, rather than recomputing it in Python every time
+
+So the architecture becomes:
+
+### Shell layer
+- cheap gating
+- environment activation once per actual run
+- file existence checks
+- cron orchestration
+
+### Python layer
+- once sequencer starts, decide what steps to build/run from `input_state`
+- validate assumptions
+- handle backward compatibility
+
+That gives you flexibility **without increasing interpreter startups**.
+
+---
+
+## Recommended adjustment to the previous plan
+
+### Do not do this on every launcher invocation
+Avoid:
+
+```bash
+python -m osa.scripts.input_ready ...
+```
+
+inside a cron-polled shell launcher every 15 or 20 minutes.
+
+That would indeed add Python/conda startup overhead.
+
+### Do this instead
+Keep shell conditions like today, but make them depend on **state-specific artifacts**.
+
+Examples:
+
+- legacy mode:
+  - wait for `GainSelFinished.txt`
+
+- gain-selected mode:
+  - wait for a directory, sentinel file, or expected first product indicating gain-selected inputs exist
+
+- catA-calibrated mode:
+  - wait for a directory, sentinel file, or expected calibrated products
+
+Then the launcher remains cheap:
+
+```bash
+if [ "$INPUT_STATE" = "legacy_raw" ]; then
+    [ -e "$GAINSEL_FLAG" ] || exit 0
+elif [ "$INPUT_STATE" = "gain_selected" ]; then
+    [ -e "$GAIN_SELECTED_READY_FLAG" ] || exit 0
+elif [ "$INPUT_STATE" = "catA_calibrated" ]; then
+    [ -e "$CATA_READY_FLAG" ] || exit 0
+fi
+```
+
+Only after that does it activate conda and run sequencer.
+
+## This is probably the best design for your setup
+You already have an operations-oriented shell orchestration layer. Use it.
+
+The mistake would be to force the launcher to perform expensive logic every time. It doesn‚Äôt need to.
+
+---
+
+## Revised architecture
+
+### 1. Launchers stay in shell
+They remain responsible for:
+- cron integration
+- cheap readiness gating
+- avoiding unnecessary environment startup
+
+### 2. Sequencer gets `input_state`
+Once started, sequencer uses the new state model to:
+- skip Cat-A calibration if already done
+- avoid depending on gain selection if upstream already handled it
+- build the correct job graph
+
+### 3. Shell and Python share the same declared state
+For example from the same config or env var:
+
+```bash
+INPUT_STATE=catA_calibrated
+```
+
+Then:
+- launcher uses it for cheap gating
+- sequencer uses it for job planning
+
+That keeps behavior consistent without repeated Python startups.
+
+---
+
+## Concrete practical approach
+
+### Option A: state in env var
+Set in `osa-env.sh`:
+
+```bash
+export INPUT_STATE=legacy_raw
+```
+
+or later:
+
+```bash
+export INPUT_STATE=catA_calibrated
+```
+
+Launcher reads it directly.
+
+Sequencer also receives it:
+```bash
+sequencer --input-state "$INPUT_STATE" ...
+```
+
+This is simple and cheap.
+
+### Option B: state in cfg, but shell reads a mirrored env var
+If parsing the cfg in shell is awkward, don‚Äôt parse it there. Just mirror the value in `osa-env.sh`.
+
+That is often the most practical operations choice.
+
+### Option C: readiness sentinel files
+If upstream changes are handled by external systems, have those systems write a cheap sentinel file such as:
+
+- `GainSelFinished.txt`
+- `InputState_gain_selected.txt`
+- `InputState_catA_calibrated.txt`
+
+Then launchers only test for one file.
+
+This is extremely cheap and works well with cron.
+
+---
+
+## My recommended minimal-change solution
+
+Given your constraint, I would do this:
+
+### Keep:
+- `.sh` launchers
+- current cron structure
+- file-based gating approach
+
+### Change:
+- add `INPUT_STATE` to launcher environment
+- pass `--input-state "$INPUT_STATE"` into sequencer
+- refactor sequencer internals to use a `ProcessingPlan`
+- generalize shell gating so it no longer assumes only gain selection exists
+
+So instead of hardcoding:
+- ‚Äúsequencer waits for GainSelFinished.txt‚Äù
+
+you make it:
+- ‚Äúsequencer waits for the readiness artifact appropriate to the configured input state‚Äù
+
+Still in shell.
+
+---
+
+## Example shell pattern
+
+Something like:
+
+```bash
+case "$INPUT_STATE" in
+  legacy_raw)
+    READY_FLAG="${WORKDIR}/GainSelFinished.txt"
+    ;;
+  gain_selected)
+    READY_FLAG="${WORKDIR}/GainSelectedReady.txt"
+    ;;
+  catA_calibrated)
+    READY_FLAG="${WORKDIR}/CatACalibratedReady.txt"
+    ;;
+  *)
+    echo "Unknown INPUT_STATE=$INPUT_STATE"
+    exit 1
+    ;;
+esac
+
+if [ ! -e "$READY_FLAG" ]; then
+    exit 0
+fi
+
+source "$CONDA_ENV"
+sequencer -c "$CFG" --input-state "$INPUT_STATE" -d "$OBS_DATE" LST1
+```
+
+This preserves the cheap launcher model.
+
+---
+
+## Important nuance
+You do **not** need the shell launcher to fully understand pipeline logic.
+
+It only needs to know:
+- which readiness condition corresponds to the configured state.
+
+The richer logic stays in Python, but only runs once the launcher has decided it is worth starting Python.
+
+That‚Äôs the right separation for your environment.
+
+---
+
+## Recommendation summary
+So the answer is:
+
+**No, the proposed refactor does not have to force more Python/conda startups.**
+
+For your setup, the best version is:
+
+1. keep shell launchers
+2. keep shell-based cheap readiness checks
+3. introduce `input_state`
+4. pass `input_state` into sequencer
+5. let sequencer build the correct plan internally
+6. use state-specific sentinel files or cheap filesystem checks in shell
+
+That gives you the flexibility you want **without losing the operational efficiency of the current launcher design**.
+
+If you want, I can next draft a **shell-friendly version of the refactor**:
+- proposed `osa-env.sh` variables
+- example changes to `launch_Sequencer1.sh`
+- how to keep backward compatibility with `GainSelFinished.txt`
+- how to represent the new ‚ÄúCat-A already done‚Äù readiness condition.
+
